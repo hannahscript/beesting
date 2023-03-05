@@ -91,6 +91,7 @@ pub enum ParserError {
     ExpectedAnyGotEof,
     TypeMismatch(String, usize, String, Ast),
     ArityMismatch(String, usize, usize),
+    ExpectedSymbol,
 }
 
 impl Debug for ParserError {
@@ -116,6 +117,7 @@ impl Debug for ParserError {
                 "Arity mismatch: Expected {} arguments for function <function:{}> but got {}",
                 fun, expected, got
             ),
+            ParserError::ExpectedSymbol => write!(f, "Expected symbol"),
         }
     }
 }

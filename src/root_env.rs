@@ -1,5 +1,5 @@
 use crate::parser::{Ast, ParserError};
-use std::collections::HashMap;
+use std::collections::{HashMap, LinkedList};
 
 /* Helper functions */
 
@@ -69,20 +69,14 @@ fn div(name: &str, values: &[Ast]) -> Result<Ast, ParserError> {
 
 /* Public */
 
-pub struct Environment<'a> {
-    pub values: HashMap<&'a str, Ast>,
-    pub parent: Option<Box<Environment<'a>>>,
-}
+pub type Environment = LinkedList<HashMap<String, Ast>>;
 
-pub fn create_root_env<'a>() -> Environment<'a> {
+pub fn create_root_env() -> Environment {
     let mut root_env_table = HashMap::new();
-    root_env_table.insert("+", Ast::Function("add".to_owned(), add));
-    root_env_table.insert("-", Ast::Function("sub".to_owned(), sub));
-    root_env_table.insert("*", Ast::Function("mult".to_owned(), mult));
-    root_env_table.insert("/", Ast::Function("div".to_owned(), div));
+    root_env_table.insert("+".to_owned(), Ast::Function("add".to_owned(), add));
+    root_env_table.insert("-".to_owned(), Ast::Function("sub".to_owned(), sub));
+    root_env_table.insert("*".to_owned(), Ast::Function("mult".to_owned(), mult));
+    root_env_table.insert("/".to_owned(), Ast::Function("div".to_owned(), div));
 
-    Environment {
-        values: root_env_table,
-        parent: None,
-    }
+    LinkedList::from([root_env_table])
 }

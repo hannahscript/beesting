@@ -1,3 +1,5 @@
+use crate::errors::ReplError;
+use crate::root_env::Environment;
 use std::fmt::{Debug, Formatter};
 use std::iter::Peekable;
 use std::mem;
@@ -65,22 +67,33 @@ fn get_token(token: &str) -> Token {
 }
 
 pub type Function = fn(&str, &[Ast]) -> Result<Ast, ParserError>;
+pub type EnvFunction = fn(&mut Environment) -> Result<Ast, ReplError>;
 
 #[derive(Clone)]
 pub enum Ast {
     Symbol(String),
     Integer(i64),
+    Boolean(bool),
     List(Vec<Ast>),
-    Function(String, Function),
+    Function(Box<UserFunction>),
+    Builtin(Vec<String>, EnvFunction),
+}
+
+#[derive(Clone)]
+pub struct UserFunction {
+    pub params: Vec<String>,
+    pub body: Ast,
 }
 
 impl Debug for Ast {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Ast::Integer(n) => write!(f, "{}", n),
-            Ast::Function(name, _) => write!(f, "<function:{}>", name),
+            Ast::Function(_) => write!(f, "<function>"),
+            Ast::Builtin(_, _) => write!(f, "<builtin>"),
             Ast::List(xs) => write!(f, "{:?}", xs),
             Ast::Symbol(s) => write!(f, "{}", s),
+            Ast::Boolean(s) => write!(f, "{}", s),
         }
     }
 }
@@ -168,9 +181,17 @@ fn parse_atom(it: &mut Peekable<IntoIter<PositionalToken>>) -> Result<Ast, Parse
     Ok(match atom {
         Token::LeftParen => panic!("wtf"),
         Token::RightParen => panic!("wtf"),
-        Token::Symbol(s) => Ast::Symbol(s),
+        Token::Symbol(s) => translate_symbol(&s),
         Token::Integer(n) => Ast::Integer(n),
     })
+}
+
+fn translate_symbol(symbol: &str) -> Ast {
+    match symbol {
+        "true" => Ast::Boolean(true),
+        "false" => Ast::Boolean(false),
+        other => Ast::Symbol(other.to_owned()),
+    }
 }
 
 fn parse_any(it: &mut Peekable<IntoIter<PositionalToken>>) -> Result<Ast, ParserError> {

@@ -5,7 +5,86 @@ use std::collections::HashMap;
 use std::iter::zip;
 use std::ops::Deref;
 
-fn call_e(fun: Ast, args: Vec<Ast>, env: &mut Environment) -> Result<Ast, ReplError> {
+pub fn eval(ast: Ast, env: &mut Environment) -> Result<Ast, ReplError> {
+    match ast {
+        Ast::List(xs) => eval_list(xs, env),
+        Ast::Symbol(s) => eval_symbol(&s, env),
+        Ast::Integer(n) => Ok(Ast::Integer(n)),
+        Ast::Boolean(b) => Ok(Ast::Boolean(b)),
+        Ast::Function(_) => Ok(Ast::Nil),
+        Ast::Builtin(_, _) => Ok(Ast::Nil),
+        Ast::Nil => Ok(Ast::Nil),
+    }
+}
+
+fn eval_list(xs: Vec<Ast>, env: &mut Environment) -> Result<Ast, ReplError> {
+    if xs.is_empty() {
+        todo!("error: empty list")
+    }
+
+    if let Ast::Symbol(s) = &xs[0] {
+        match s.as_str() {
+            "def!" => eval_form_def(xs, env),
+            "let*" => eval_form_let(xs, env),
+            "if" => eval_form_if(xs, env),
+            "fun*" => eval_form_fun(xs),
+            _ => eval_func_call(xs, env),
+        }
+    } else {
+        todo!("no special form and no function in list head")
+    }
+}
+
+fn eval_form_def(args: Vec<Ast>, env: &mut Environment) -> Result<Ast, ReplError> {
+    // todo arity check
+    let name = get_symbol_name(&args[1])?;
+    let definition = &args[2];
+
+    let definition_value = eval(definition.clone(), env)?;
+    let values = env.front_mut().expect("Empty environments");
+    values.insert(name, definition_value.clone());
+    Ok(definition_value)
+}
+
+fn eval_form_let(args: Vec<Ast>, env: &mut Environment) -> Result<Ast, ReplError> {
+    let bindings = &args[1];
+    let expr = &args[2];
+
+    bind_let(bindings.clone(), env)?;
+    let result = eval(expr.clone(), env);
+    env.pop_front();
+    result
+}
+
+fn eval_form_if(args: Vec<Ast>, env: &mut Environment) -> Result<Ast, ReplError> {
+    let condition = eval(args[1].clone(), env)?;
+
+    let is_true = match condition {
+        Ast::Boolean(b) => b,
+        _ => true,
+    };
+
+    if is_true {
+        eval(args[2].clone(), env)
+    } else {
+        eval(args[3].clone(), env)
+    }
+}
+
+fn eval_form_fun(args: Vec<Ast>) -> Result<Ast, ReplError> {
+    let params = get_symbol_list(&args[1])?;
+    let body = &args[2];
+    let fun = Ast::Function(Box::new(UserFunction {
+        params,
+        body: body.clone(),
+    }));
+    Ok(fun)
+}
+
+fn eval_func_call(xs: Vec<Ast>, env: &mut Environment) -> Result<Ast, ReplError> {
+    let fun = eval(xs[0].clone(), env)?;
+    let args = eval_all(&xs[1..], env)?;
+
     match fun {
         Ast::Function(fun_box) => {
             let user_fun = fun_box.deref();
@@ -22,6 +101,11 @@ fn call_e(fun: Ast, args: Vec<Ast>, env: &mut Environment) -> Result<Ast, ReplEr
         }
         _ => todo!("error: attempted to call non-function"),
     }
+}
+
+fn eval_symbol(s: &str, env: &mut Environment) -> Result<Ast, ReplError> {
+    let v = lookup(s, env)?;
+    Ok(v.clone())
 }
 
 fn bind_fn(params: &[String], args: Vec<Ast>, env: &mut Environment) {
@@ -42,105 +126,17 @@ fn eval_all(xs: &[Ast], env: &mut Environment) -> Result<Vec<Ast>, ReplError> {
     Ok(values)
 }
 
-pub fn eval(ast: Ast, env: &mut Environment) -> Result<Ast, ReplError> {
-    match ast {
-        Ast::List(xs) => {
-            if xs.is_empty() {
-                return Ok(Ast::List(vec![]));
-            }
-
-            let first = xs.get(0).unwrap();
-            if let Ast::Symbol(s) = first {
-                match s.as_str() {
-                    "def!" => do_def(xs, env),
-                    "let*" => do_let(xs, env),
-                    "if" => do_if(xs, env),
-                    "fun*" => do_fun(xs, env),
-                    _ => do_call_e(xs, env),
-                }
-            } else {
-                todo!("no special form and no function in list head")
-            }
-        }
-        Ast::Symbol(s) => {
-            let v = lookup(&s, env)?;
-            Ok(v.clone())
-        }
-        _ => Ok(ast),
-    }
-}
-
-fn do_def(args: Vec<Ast>, env: &mut Environment) -> Result<Ast, ReplError> {
-    // todo arity check
-    let name = get_symbol_name(args.get(1).unwrap())?;
-    let definition = args.get(2).unwrap();
-
-    let definition_value = eval(definition.clone(), env)?;
-    bind(env, name, definition_value.clone());
-    Ok(definition_value)
-}
-
-fn do_let(args: Vec<Ast>, env: &mut Environment) -> Result<Ast, ReplError> {
-    let bindings = args.get(1).unwrap();
-    let expr = args.get(2).unwrap();
-
-    bind_let(bindings.clone(), env)?;
-    let result = eval(expr.clone(), env);
-    env.pop_front();
-    result
-}
-
-fn do_fun(args: Vec<Ast>, env: &mut Environment) -> Result<Ast, ReplError> {
-    let params = get_symbol_list(args.get(1).unwrap())?;
-    let body = args.get(2).unwrap();
-    let fun = Ast::Function(Box::new(UserFunction {
-        params,
-        body: body.clone(),
-    }));
-    Ok(fun)
-}
-
-fn do_call_e(args: Vec<Ast>, env: &mut Environment) -> Result<Ast, ReplError> {
-    let fun = eval(args.get(0).unwrap().clone(), env)?;
-    let vs = eval_all(&args[1..], env)?;
-    call_e(fun, vs, env)
-}
-
-fn do_if(args: Vec<Ast>, env: &mut Environment) -> Result<Ast, ReplError> {
-    let condition = eval(args.get(1).unwrap().clone(), env)?;
-
-    let is_true = match condition {
-        Ast::Boolean(b) => b,
-        _ => true,
-    };
-
-    if is_true {
-        eval(args.get(2).unwrap().clone(), env)
-    } else {
-        eval(args.get(3).unwrap().clone(), env)
-    }
-}
-
-// fn do_fun(args: Vec<Ast>, env: &mut Environment) -> Result<Ast, ReplError> {
-//     let symbols = get_symbol_list(args.get(1).unwrap())?;
-// }
-
 fn get_symbol_list(ast: &Ast) -> Result<Vec<String>, ReplError> {
     if let Ast::List(xs) = ast {
         let mut result = vec![];
         for x in xs {
-            result.push(get_symbol_name(&x)?);
+            result.push(get_symbol_name(x)?);
         }
 
         Ok(result)
     } else {
         todo!("Error: not a list")
     }
-}
-
-fn bind(env: &mut Environment, name: String, ast: Ast) {
-    let values = env.front_mut().expect("Empty environments");
-    values.insert(name, ast);
 }
 
 fn bind_let(ast: Ast, env: &mut Environment) -> Result<(), ReplError> {

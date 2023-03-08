@@ -77,6 +77,7 @@ pub enum Ast {
     List(Vec<Ast>),
     Function(Box<UserFunction>),
     Builtin(Vec<String>, EnvFunction),
+    Nil,
 }
 
 #[derive(Clone)]
@@ -94,6 +95,7 @@ impl Debug for Ast {
             Ast::List(xs) => write!(f, "{:?}", xs),
             Ast::Symbol(s) => write!(f, "{}", s),
             Ast::Boolean(s) => write!(f, "{}", s),
+            Ast::Nil => write!(f, "nil"),
         }
     }
 }

@@ -18,7 +18,7 @@ fn read() -> Result<Ast, ReplError> {
 
 fn rep(root_env: &mut Environment) -> Result<Ast, ReplError> {
     let input = read()?;
-    eval(input, root_env)
+    eval(&input, root_env)
 }
 
 fn main() {
@@ -36,3 +36,5 @@ fn main() {
 }
 
 // (def! fib (fun* (n) (if (< n 2) 1 (+ (fib (- n 1)) (fib (- n 2))))))
+// (define fib (lambda (n) (if (< n 2) 1 (+ (fib (- n 1)) (fib (- n 2))))))
+// (defun fib (n) (if (< n 2) 1 (+ (fib (- n 1)) (fib (- n 2)))))

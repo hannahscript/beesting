@@ -1,8 +1,10 @@
 use crate::errors::ReplError;
 use crate::root_env::Environment;
+use std::cell::RefCell;
 use std::fmt::{Debug, Formatter};
 use std::iter::Peekable;
 use std::mem;
+use std::rc::Rc;
 use std::str::FromStr;
 use std::vec::IntoIter;
 
@@ -66,8 +68,7 @@ fn get_token(token: &str) -> Token {
     }
 }
 
-pub type Function = fn(&str, &[Ast]) -> Result<Ast, ParserError>;
-pub type EnvFunction = fn(&mut Environment) -> Result<Ast, ReplError>;
+pub type EnvFunction = fn(&Rc<RefCell<Environment>>) -> Result<Ast, ReplError>;
 
 #[derive(Clone)]
 pub enum Ast {
@@ -84,6 +85,7 @@ pub enum Ast {
 pub struct UserFunction {
     pub params: Vec<String>,
     pub body: Ast,
+    pub env: Rc<RefCell<Environment>>,
 }
 
 impl Debug for Ast {
@@ -105,7 +107,6 @@ pub enum ParserError {
     ExpectedGotEof(Token),
     ExpectedAnyGotEof,
     TypeMismatch(String, usize, String, Ast),
-    ArityMismatch(String, usize, usize),
     ExpectedSymbol,
 }
 
@@ -126,11 +127,6 @@ impl Debug for ParserError {
                 f,
                 "Type mismatch: Expected {} at argument position {} of {} but got {:?}",
                 expected, index, fn_name, got
-            ),
-            ParserError::ArityMismatch(fun, expected, got) => write!(
-                f,
-                "Arity mismatch: Expected {} arguments for function <function:{}> but got {}",
-                fun, expected, got
             ),
             ParserError::ExpectedSymbol => write!(f, "Expected symbol"),
         }

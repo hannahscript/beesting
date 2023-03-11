@@ -1,13 +1,15 @@
 use crate::errors::ReplError;
 use crate::parser::{Ast, ParserError};
-use std::collections::{HashMap, LinkedList};
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::mem;
+use std::rc::Rc;
 
 /* Helper functions */
 
-fn get_int(ast: &Ast, index: usize, fn_name: &str) -> Result<i64, ParserError> {
+fn get_int(ast: Ast, index: usize, fn_name: &str) -> Result<i64, ParserError> {
     match ast {
-        Ast::Integer(n) => Ok(*n),
+        Ast::Integer(n) => Ok(n),
         _ => Err(ParserError::TypeMismatch(
             fn_name.to_owned(),
             index + 1,
@@ -17,58 +19,70 @@ fn get_int(ast: &Ast, index: usize, fn_name: &str) -> Result<i64, ParserError> {
     }
 }
 
-pub fn lookup<'a>(symbol: &str, envs: &'a Environment) -> Result<&'a Ast, ReplError> {
-    for env in envs {
-        if let Some(v) = env.get(symbol) {
-            return Ok(v);
+pub fn lookup(symbol: String, env: &Rc<RefCell<Environment>>) -> Result<Ast, ReplError> {
+    if let Some(v) = env.borrow().values.get(&symbol) {
+        Ok(v.clone())
+    } else {
+        match &env.borrow().parent {
+            None => Err(ReplError::SymbolUndefined(symbol.to_owned())),
+            Some(penv) => lookup(symbol, penv),
         }
     }
+}
 
-    Err(ReplError::SymbolUndefined(symbol.to_owned()))
+pub fn lookup_ref(symbol: &str, env: &Rc<RefCell<Environment>>) -> Result<Ast, ReplError> {
+    if let Some(v) = env.borrow().values.get(symbol) {
+        Ok(v.clone())
+    } else {
+        match &env.borrow().parent {
+            None => Err(ReplError::SymbolUndefined(symbol.to_owned())),
+            Some(penv) => lookup_ref(symbol, penv),
+        }
+    }
 }
 
 /* Standard lib */
 
-fn add(env: &mut Environment) -> Result<Ast, ReplError> {
+fn add(env: &Rc<RefCell<Environment>>) -> Result<Ast, ReplError> {
     // todo fix name arg
-    let a = get_int(lookup("a", env)?, 0, "name")?;
-    let b = get_int(lookup("b", env)?, 1, "name")?;
+    let a = get_int(lookup_ref("a", env)?, 0, "name")?;
+    let b = get_int(lookup_ref("b", env)?, 1, "name")?;
 
     Ok(Ast::Integer(a + b))
 }
 
-fn sub(env: &mut Environment) -> Result<Ast, ReplError> {
-    let a = get_int(lookup("a", env)?, 0, "name")?;
-    let b = get_int(lookup("b", env)?, 1, "name")?;
+fn sub(env: &Rc<RefCell<Environment>>) -> Result<Ast, ReplError> {
+    let a = get_int(lookup_ref("a", env)?, 0, "name")?;
+    let b = get_int(lookup_ref("b", env)?, 1, "name")?;
 
     Ok(Ast::Integer(a - b))
 }
 
-fn mult(env: &mut Environment) -> Result<Ast, ReplError> {
-    let a = get_int(lookup("a", env)?, 0, "name")?;
-    let b = get_int(lookup("b", env)?, 1, "name")?;
+fn mult(env: &Rc<RefCell<Environment>>) -> Result<Ast, ReplError> {
+    let a = get_int(lookup_ref("a", env)?, 0, "name")?;
+    let b = get_int(lookup_ref("b", env)?, 1, "name")?;
 
     Ok(Ast::Integer(a * b))
 }
 
-fn div(env: &mut Environment) -> Result<Ast, ReplError> {
-    let a = get_int(lookup("a", env)?, 0, "name")?;
-    let b = get_int(lookup("b", env)?, 1, "name")?;
+fn div(env: &Rc<RefCell<Environment>>) -> Result<Ast, ReplError> {
+    let a = get_int(lookup_ref("a", env)?, 0, "name")?;
+    let b = get_int(lookup_ref("b", env)?, 1, "name")?;
 
     Ok(Ast::Integer(a / b))
 }
 
-fn prn(env: &mut Environment) -> Result<Ast, ReplError> {
-    let a = lookup("a", env)?;
+fn prn(env: &Rc<RefCell<Environment>>) -> Result<Ast, ReplError> {
+    let a = lookup_ref("a", env)?;
     println!("{:?}", a);
     Ok(Ast::List(vec![]))
 }
 
-fn op_eq(env: &mut Environment) -> Result<Ast, ReplError> {
-    let a = lookup("a", env)?;
-    let b = lookup("b", env)?;
+fn op_eq(env: &Rc<RefCell<Environment>>) -> Result<Ast, ReplError> {
+    let a = lookup_ref("a", env)?;
+    let b = lookup_ref("b", env)?;
 
-    if mem::discriminant(a) != mem::discriminant(b) {
+    if mem::discriminant(&a) != mem::discriminant(&b) {
         return Ok(Ast::Boolean(false));
     }
 
@@ -91,11 +105,11 @@ fn op_eq(env: &mut Environment) -> Result<Ast, ReplError> {
     }
 }
 
-fn op_lt(env: &mut Environment) -> Result<Ast, ReplError> {
-    let a = lookup("a", env)?;
-    let b = lookup("b", env)?;
+fn op_lt(env: &Rc<RefCell<Environment>>) -> Result<Ast, ReplError> {
+    let a = lookup_ref("a", env)?;
+    let b = lookup_ref("b", env)?;
 
-    if mem::discriminant(a) != mem::discriminant(b) {
+    if mem::discriminant(&a) != mem::discriminant(&b) {
         return Ok(Ast::Boolean(false));
     }
 
@@ -113,7 +127,11 @@ fn op_lt(env: &mut Environment) -> Result<Ast, ReplError> {
 
 /* Public */
 
-pub type Environment = LinkedList<HashMap<String, Ast>>;
+#[derive(Clone)]
+pub struct Environment {
+    pub values: HashMap<String, Ast>,
+    pub parent: Option<Rc<RefCell<Environment>>>,
+}
 
 pub fn create_root_env() -> Environment {
     let mut root_env_table = HashMap::new();
@@ -143,5 +161,9 @@ pub fn create_root_env() -> Environment {
         "<".to_owned(),
         Ast::Builtin(vec!["a".to_owned(), "b".to_owned()], op_lt),
     );
-    LinkedList::from([root_env_table])
+
+    Environment {
+        values: root_env_table,
+        parent: None,
+    }
 }

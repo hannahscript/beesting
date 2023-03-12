@@ -27,7 +27,7 @@ fn main() {
     let root_env = Rc::new(RefCell::new(create_root_env()));
 
     loop {
-        print!("user> ");
+        print!("🐝> ");
         io::stdout().flush().expect("Can't flush. Call Luigi");
         let output_result = rep(&root_env);
         match output_result {

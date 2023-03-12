@@ -59,8 +59,8 @@ fn eval_list(xs: Vec<Ast>, env: &Rc<RefCell<Environment>>) -> Result<EvalBehavio
 
 fn eval_form_def(mut args: Vec<Ast>, env: &Rc<RefCell<Environment>>) -> Result<Ast, ReplError> {
     // todo arity check
-    let name = get_symbol_name(args.remove(1))?;
-    let definition = args.remove(1);
+    let definition = args.pop().unwrap();
+    let name = get_symbol_name(args.pop().unwrap())?;
 
     let definition_value = eval(definition, env)?;
     env.borrow_mut()
@@ -73,8 +73,8 @@ fn do_form_let(
     mut args: Vec<Ast>,
     env: &Rc<RefCell<Environment>>,
 ) -> Result<EvalBehaviour, ReplError> {
-    let expr = args.remove(2);
-    let bindings = args.remove(1);
+    let expr = args.pop().unwrap();
+    let bindings = args.pop().unwrap();
 
     let n_env = bind_let(bindings, env)?;
     Ok(EvalBehaviour::LoopWithAstAndEnv(expr, n_env))
@@ -96,10 +96,11 @@ fn do_form_if(mut args: Vec<Ast>, env: &Rc<RefCell<Environment>>) -> Result<Ast,
 }
 
 fn eval_form_fun(mut args: Vec<Ast>, env: &Rc<RefCell<Environment>>) -> Result<Ast, ReplError> {
-    let params = get_symbol_list(args.remove(1))?;
+    let body = args.pop().unwrap();
+    let params = get_symbol_list(args.pop().unwrap())?;
     let fun = Ast::Function(Box::new(UserFunction {
         params,
-        body: args.remove(1),
+        body,
         env: Rc::clone(env),
     }));
     Ok(fun)
@@ -116,8 +117,6 @@ fn eval_func_call(
     match fun {
         Ast::Function(fun_box) => {
             let user_fun = fun_box;
-            // env = Rc::new(RefCell::new(bind_fn(&user_fun.params, args, &user_fun.env)));
-            // ast = user_fun.body;
             Ok(EvalBehaviour::LoopWithAstAndEnv(
                 user_fun.body,
                 bind_fn(&user_fun.params, args, &user_fun.env),

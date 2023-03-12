@@ -7,12 +7,12 @@ use std::rc::Rc;
 
 /* Helper functions */
 
-fn get_int(ast: Ast, index: usize, fn_name: &str) -> Result<i64, ParserError> {
+fn get_int(ast: Ast, pos: u32, fn_name: &str) -> Result<i64, ParserError> {
     match ast {
         Ast::Integer(n) => Ok(n),
         _ => Err(ParserError::TypeMismatch(
             fn_name.to_owned(),
-            index + 1,
+            pos,
             "Integer".to_owned(),
             ast.clone(),
         )),
@@ -43,44 +43,43 @@ pub fn lookup_ref(symbol: &str, env: &Rc<RefCell<Environment>>) -> Result<Ast, R
 
 /* Standard lib */
 
-fn add(env: &Rc<RefCell<Environment>>) -> Result<Ast, ReplError> {
-    // todo fix name arg
-    let a = get_int(lookup_ref("a", env)?, 0, "name")?;
-    let b = get_int(lookup_ref("b", env)?, 1, "name")?;
+fn add(name: &str, mut args: Vec<Ast>) -> Result<Ast, ReplError> {
+    let b = get_int(args.pop().unwrap(), 2, name)?;
+    let a = get_int(args.pop().unwrap(), 1, name)?;
 
     Ok(Ast::Integer(a + b))
 }
 
-fn sub(env: &Rc<RefCell<Environment>>) -> Result<Ast, ReplError> {
-    let a = get_int(lookup_ref("a", env)?, 0, "name")?;
-    let b = get_int(lookup_ref("b", env)?, 1, "name")?;
+fn sub(name: &str, mut args: Vec<Ast>) -> Result<Ast, ReplError> {
+    let b = get_int(args.pop().unwrap(), 2, name)?;
+    let a = get_int(args.pop().unwrap(), 1, name)?;
 
     Ok(Ast::Integer(a - b))
 }
 
-fn mult(env: &Rc<RefCell<Environment>>) -> Result<Ast, ReplError> {
-    let a = get_int(lookup_ref("a", env)?, 0, "name")?;
-    let b = get_int(lookup_ref("b", env)?, 1, "name")?;
+fn mult(name: &str, mut args: Vec<Ast>) -> Result<Ast, ReplError> {
+    let b = get_int(args.pop().unwrap(), 2, name)?;
+    let a = get_int(args.pop().unwrap(), 1, name)?;
 
     Ok(Ast::Integer(a * b))
 }
 
-fn div(env: &Rc<RefCell<Environment>>) -> Result<Ast, ReplError> {
-    let a = get_int(lookup_ref("a", env)?, 0, "name")?;
-    let b = get_int(lookup_ref("b", env)?, 1, "name")?;
+fn div(name: &str, mut args: Vec<Ast>) -> Result<Ast, ReplError> {
+    let b = get_int(args.pop().unwrap(), 2, name)?;
+    let a = get_int(args.pop().unwrap(), 1, name)?;
 
     Ok(Ast::Integer(a / b))
 }
 
-fn prn(env: &Rc<RefCell<Environment>>) -> Result<Ast, ReplError> {
-    let a = lookup_ref("a", env)?;
+fn prn(name: &str, mut args: Vec<Ast>) -> Result<Ast, ReplError> {
+    let a = get_int(args.pop().unwrap(), 1, name)?;
     println!("{:?}", a);
-    Ok(Ast::List(vec![]))
+    Ok(Ast::Nil)
 }
 
-fn op_eq(env: &Rc<RefCell<Environment>>) -> Result<Ast, ReplError> {
-    let a = lookup_ref("a", env)?;
-    let b = lookup_ref("b", env)?;
+fn op_eq(name: &str, mut args: Vec<Ast>) -> Result<Ast, ReplError> {
+    let b = args.pop().unwrap();
+    let a = args.pop().unwrap();
 
     if mem::discriminant(&a) != mem::discriminant(&b) {
         return Ok(Ast::Boolean(false));
@@ -105,9 +104,9 @@ fn op_eq(env: &Rc<RefCell<Environment>>) -> Result<Ast, ReplError> {
     }
 }
 
-fn op_lt(env: &Rc<RefCell<Environment>>) -> Result<Ast, ReplError> {
-    let a = lookup_ref("a", env)?;
-    let b = lookup_ref("b", env)?;
+fn op_lt(name: &str, mut args: Vec<Ast>) -> Result<Ast, ReplError> {
+    let b = args.pop().unwrap();
+    let a = args.pop().unwrap();
 
     if mem::discriminant(&a) != mem::discriminant(&b) {
         return Ok(Ast::Boolean(false));
@@ -125,6 +124,29 @@ fn op_lt(env: &Rc<RefCell<Environment>>) -> Result<Ast, ReplError> {
     }
 }
 
+fn list(name: &str, mut args: Vec<Ast>) -> Result<Ast, ReplError> {
+    Ok(Ast::List(args))
+}
+
+fn list_q(name: &str, mut args: Vec<Ast>) -> Result<Ast, ReplError> {
+    let a = args.pop().unwrap();
+    Ok(Ast::Boolean(matches!(a, Ast::List(_))))
+}
+
+fn empty_q(name: &str, mut args: Vec<Ast>) -> Result<Ast, ReplError> {
+    let a = args.pop().unwrap();
+    Ok(Ast::Boolean(matches!(a, Ast::List(xs) if xs.is_empty())))
+}
+
+fn count(name: &str, mut args: Vec<Ast>) -> Result<Ast, ReplError> {
+    let a = args.pop().unwrap();
+    Ok(Ast::Integer(if let Ast::List(xs) = a {
+        xs.len() as i64
+    } else {
+        0
+    }))
+}
+
 /* Public */
 
 #[derive(Clone)]
@@ -135,32 +157,20 @@ pub struct Environment {
 
 pub fn create_root_env() -> Environment {
     let mut root_env_table = HashMap::new();
-    // root_env_table.insert("+".to_owned(), Ast::Function("add".to_owned(), add));
+    root_env_table.insert("+".to_owned(), Ast::Builtin("+".to_owned(), add));
+    root_env_table.insert("-".to_owned(), Ast::Builtin("-".to_owned(), sub));
+    root_env_table.insert("*".to_owned(), Ast::Builtin("*".to_owned(), mult));
+    root_env_table.insert("/".to_owned(), Ast::Builtin("/".to_owned(), div));
+    root_env_table.insert("prn".to_owned(), Ast::Builtin("prn".to_owned(), prn));
+    root_env_table.insert("=".to_owned(), Ast::Builtin("=".to_owned(), op_eq));
+    root_env_table.insert("<".to_owned(), Ast::Builtin("<".to_owned(), op_lt));
+    root_env_table.insert("list".to_owned(), Ast::Builtin("list".to_owned(), list));
+    root_env_table.insert("list?".to_owned(), Ast::Builtin("list?".to_owned(), list_q));
     root_env_table.insert(
-        "+".to_owned(),
-        Ast::Builtin(vec!["a".to_owned(), "b".to_owned()], add),
+        "empty?".to_owned(),
+        Ast::Builtin("empty?".to_owned(), empty_q),
     );
-    root_env_table.insert(
-        "-".to_owned(),
-        Ast::Builtin(vec!["a".to_owned(), "b".to_owned()], sub),
-    );
-    root_env_table.insert(
-        "*".to_owned(),
-        Ast::Builtin(vec!["a".to_owned(), "b".to_owned()], mult),
-    );
-    root_env_table.insert(
-        "/".to_owned(),
-        Ast::Builtin(vec!["a".to_owned(), "b".to_owned()], div),
-    );
-    root_env_table.insert("prn".to_owned(), Ast::Builtin(vec!["a".to_owned()], prn));
-    root_env_table.insert(
-        "=".to_owned(),
-        Ast::Builtin(vec!["a".to_owned(), "b".to_owned()], op_eq),
-    );
-    root_env_table.insert(
-        "<".to_owned(),
-        Ast::Builtin(vec!["a".to_owned(), "b".to_owned()], op_lt),
-    );
+    root_env_table.insert("count".to_owned(), Ast::Builtin("count".to_owned(), count));
 
     Environment {
         values: root_env_table,

@@ -122,11 +122,7 @@ fn eval_func_call(
                 bind_fn(&user_fun.params, args, &user_fun.env),
             ))
         }
-        Ast::Builtin(params, cb) => {
-            let n_env = bind_fn(&params, args, env);
-            let result = cb(&Rc::new(RefCell::new(n_env)))?;
-            Ok(EvalBehaviour::ReturnImmediately(result))
-        }
+        Ast::Builtin(name, cb) => Ok(EvalBehaviour::ReturnImmediately(cb(&name, args)?)),
         _ => todo!("error: attempted to call non-function"),
     }
 }

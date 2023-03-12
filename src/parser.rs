@@ -68,7 +68,7 @@ fn get_token(token: &str) -> Token {
     }
 }
 
-pub type EnvFunction = fn(&Rc<RefCell<Environment>>) -> Result<Ast, ReplError>;
+pub type EnvFunction = fn(&str, Vec<Ast>) -> Result<Ast, ReplError>;
 
 #[derive(Clone)]
 pub enum Ast {
@@ -77,7 +77,7 @@ pub enum Ast {
     Boolean(bool),
     List(Vec<Ast>),
     Function(Box<UserFunction>),
-    Builtin(Vec<String>, EnvFunction),
+    Builtin(String, EnvFunction),
     Nil,
 }
 
@@ -93,7 +93,7 @@ impl Debug for Ast {
         match self {
             Ast::Integer(n) => write!(f, "{}", n),
             Ast::Function(_) => write!(f, "<function>"),
-            Ast::Builtin(_, _) => write!(f, "<builtin>"),
+            Ast::Builtin(name, _) => write!(f, "<builtin:{}>", name),
             Ast::List(xs) => write!(f, "{:?}", xs),
             Ast::Symbol(s) => write!(f, "{}", s),
             Ast::Boolean(s) => write!(f, "{}", s),
@@ -106,7 +106,7 @@ pub enum ParserError {
     ExpectedGot(usize, Token, Token),
     ExpectedGotEof(Token),
     ExpectedAnyGotEof,
-    TypeMismatch(String, usize, String, Ast),
+    TypeMismatch(String, u32, String, Ast),
     ExpectedSymbol,
 }
 

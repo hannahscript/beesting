@@ -40,7 +40,7 @@ pub fn eval(i_ast: Ast, i_env: &Rc<RefCell<Environment>>) -> Result<Ast, ReplErr
     }
 }
 
-fn eval_list(xs: Vec<Ast>, env: &Rc<RefCell<Environment>>) -> Result<EvalBehaviour, ReplError> {
+fn eval_list(mut xs: Vec<Ast>, env: &Rc<RefCell<Environment>>) -> Result<EvalBehaviour, ReplError> {
     if xs.is_empty() {
         todo!("error: empty list")
     }
@@ -51,6 +51,10 @@ fn eval_list(xs: Vec<Ast>, env: &Rc<RefCell<Environment>>) -> Result<EvalBehavio
             "let*" => do_form_let(xs, env),
             "if" => Ok(EvalBehaviour::LoopWithAst(do_form_if(xs, env)?)),
             "fun*" => Ok(EvalBehaviour::ReturnImmediately(eval_form_fun(xs, env)?)),
+            "eval" => {
+                let result = eval(xs.remove(1), env)?;
+                Ok(EvalBehaviour::LoopWithAst(result))
+            }
             _ => eval_func_call(xs, env),
         }
     } else {

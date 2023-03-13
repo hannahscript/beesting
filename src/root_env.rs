@@ -2,8 +2,8 @@ use crate::errors::ReplError;
 use crate::parser::{Ast, ParserError};
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::mem;
 use std::rc::Rc;
+use std::{fs, mem};
 
 /* Helper functions */
 
@@ -157,6 +157,19 @@ fn concat_str(name: &str, mut args: Vec<Ast>) -> Result<Ast, ReplError> {
     Ok(Ast::String(a))
 }
 
+fn slurp(name: &str, mut args: Vec<Ast>) -> Result<Ast, ReplError> {
+    let file_name = get_str(args.pop().unwrap(), 1, name)?;
+
+    let content = fs::read_to_string(file_name)?;
+    Ok(Ast::String(content))
+}
+
+fn read_str(name: &str, mut args: Vec<Ast>) -> Result<Ast, ReplError> {
+    let a = get_str(args.pop().unwrap(), 1, name)?;
+
+    Ok(a.parse()?)
+}
+
 /* Public */
 
 #[derive(Clone)]
@@ -182,6 +195,11 @@ pub fn create_root_env() -> Environment {
     );
     root_env_table.insert("count".to_owned(), Ast::Builtin("count".to_owned(), count));
     root_env_table.insert(".".to_owned(), Ast::Builtin(".".to_owned(), concat_str));
+    root_env_table.insert("slurp".to_owned(), Ast::Builtin("slurp".to_owned(), slurp));
+    root_env_table.insert(
+        "read-str".to_owned(),
+        Ast::Builtin("read-str".to_owned(), read_str),
+    );
 
     Environment {
         values: root_env_table,

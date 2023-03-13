@@ -32,6 +32,7 @@ pub fn eval(i_ast: Ast, i_env: &Rc<RefCell<Environment>>) -> Result<Ast, ReplErr
             Ast::Symbol(s) => return eval_symbol(s, &env),
             Ast::Integer(n) => return Ok(Ast::Integer(n)),
             Ast::Boolean(b) => return Ok(Ast::Boolean(b)),
+            Ast::String(str) => return Ok(Ast::String(str)),
             Ast::Function(_) => return Ok(Ast::Nil),
             Ast::Builtin(_, _) => return Ok(Ast::Nil),
             Ast::Nil => return Ok(Ast::Nil),

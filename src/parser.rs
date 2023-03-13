@@ -14,6 +14,7 @@ pub enum Token {
     RightParen,
     Symbol(String),
     Integer(i64),
+    String(String),
 }
 
 impl PartialEq for Token {
@@ -24,44 +25,73 @@ impl PartialEq for Token {
 
 type PositionalToken = (usize, Token);
 
-fn tokenize(text: &str) -> Vec<PositionalToken> {
-    let mut tokens = vec![];
-    let mut buffer = String::new();
+#[derive(Default)]
+struct TokenizerState {
+    tokens: Vec<PositionalToken>,
+    buffer: String,
+    quoting: bool,
+}
 
-    for (i, c) in text.char_indices() {
-        match c {
-            ' ' => {
-                if !buffer.is_empty() {
-                    tokens.push((i - buffer.len(), get_token(&buffer)));
-                    buffer.clear();
-                }
-            }
-            '(' => {
-                if !buffer.is_empty() {
-                    tokens.push((i - buffer.len(), get_token(&buffer)));
-                    buffer.clear();
-                }
-                tokens.push((i, Token::LeftParen))
-            }
-            ')' => {
-                if !buffer.is_empty() {
-                    tokens.push((i - buffer.len(), get_token(&buffer)));
-                    buffer.clear();
-                }
-                tokens.push((i, Token::RightParen))
-            }
-            _ => buffer.push(c),
+impl TokenizerState {
+    fn try_push(&mut self, c: char, index: usize) -> bool {
+        if self.quoting {
+            self.buffer.push(c);
+            return false;
+        }
+
+        self.push_buffer(index, false);
+
+        true
+    }
+
+    fn try_push_with(&mut self, c: char, index: usize, with: Token) {
+        if self.try_push(c, index) {
+            self.tokens.push((index, with))
         }
     }
 
-    if !buffer.is_empty() {
-        tokens.push((text.len() - buffer.len(), get_token(&buffer)));
+    fn push_buffer(&mut self, index: usize, treat_as_str: bool) {
+        if !self.buffer.is_empty() {
+            self.tokens.push((
+                index - self.buffer.len(),
+                get_token(&self.buffer, treat_as_str),
+            ));
+            self.buffer.clear();
+        }
     }
-
-    tokens
 }
 
-fn get_token(token: &str) -> Token {
+fn tokenize(text: &str) -> Vec<PositionalToken> {
+    let mut state = TokenizerState::default();
+
+    for (i, c) in text.char_indices() {
+        match c {
+            '\'' => {
+                state.push_buffer(i, state.quoting);
+                state.quoting = !state.quoting;
+            }
+            '(' => state.try_push_with(c, i, Token::LeftParen),
+            ')' => state.try_push_with(c, i, Token::RightParen),
+            _ => {
+                if c.is_whitespace() {
+                    state.try_push(c, i);
+                } else {
+                    state.buffer.push(c)
+                }
+            }
+        }
+    }
+
+    state.push_buffer(text.len(), false);
+
+    state.tokens
+}
+
+fn get_token(token: &str, is_str: bool) -> Token {
+    if is_str {
+        return Token::String(token.to_owned());
+    }
+
     match token.parse::<i64>() {
         Ok(n) => Token::Integer(n),
         Err(_) => Token::Symbol(token.to_owned()),
@@ -75,6 +105,7 @@ pub enum Ast {
     Symbol(String),
     Integer(i64),
     Boolean(bool),
+    String(String),
     List(Vec<Ast>),
     Function(Box<UserFunction>),
     Builtin(String, EnvFunction),
@@ -92,6 +123,7 @@ impl Debug for Ast {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Ast::Integer(n) => write!(f, "{}", n),
+            Ast::String(str) => write!(f, "{}", str),
             Ast::Function(_) => write!(f, "<function>"),
             Ast::Builtin(name, _) => write!(f, "<builtin:{}>", name),
             Ast::List(xs) => write!(f, "{:?}", xs),
@@ -181,6 +213,7 @@ fn parse_atom(it: &mut Peekable<IntoIter<PositionalToken>>) -> Result<Ast, Parse
         Token::RightParen => panic!("wtf"),
         Token::Symbol(s) => translate_symbol(&s),
         Token::Integer(n) => Ast::Integer(n),
+        Token::String(str) => Ast::String(str),
     })
 }
 

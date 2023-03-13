@@ -14,7 +14,19 @@ fn get_int(ast: Ast, pos: u32, fn_name: &str) -> Result<i64, ParserError> {
             fn_name.to_owned(),
             pos,
             "Integer".to_owned(),
-            ast.clone(),
+            ast,
+        )),
+    }
+}
+
+fn get_str(ast: Ast, pos: u32, fn_name: &str) -> Result<String, ParserError> {
+    match ast {
+        Ast::String(str) => Ok(str),
+        _ => Err(ParserError::TypeMismatch(
+            fn_name.to_owned(),
+            pos,
+            "String".to_owned(),
+            ast,
         )),
     }
 }
@@ -26,17 +38,6 @@ pub fn lookup(symbol: String, env: &Rc<RefCell<Environment>>) -> Result<Ast, Rep
         match &env.borrow().parent {
             None => Err(ReplError::SymbolUndefined(symbol.to_owned())),
             Some(penv) => lookup(symbol, penv),
-        }
-    }
-}
-
-pub fn lookup_ref(symbol: &str, env: &Rc<RefCell<Environment>>) -> Result<Ast, ReplError> {
-    if let Some(v) = env.borrow().values.get(symbol) {
-        Ok(v.clone())
-    } else {
-        match &env.borrow().parent {
-            None => Err(ReplError::SymbolUndefined(symbol.to_owned())),
-            Some(penv) => lookup_ref(symbol, penv),
         }
     }
 }
@@ -71,13 +72,13 @@ fn div(name: &str, mut args: Vec<Ast>) -> Result<Ast, ReplError> {
     Ok(Ast::Integer(a / b))
 }
 
-fn prn(name: &str, mut args: Vec<Ast>) -> Result<Ast, ReplError> {
-    let a = get_int(args.pop().unwrap(), 1, name)?;
+fn prn(_name: &str, mut args: Vec<Ast>) -> Result<Ast, ReplError> {
+    let a = args.pop().unwrap();
     println!("{:?}", a);
     Ok(Ast::Nil)
 }
 
-fn op_eq(name: &str, mut args: Vec<Ast>) -> Result<Ast, ReplError> {
+fn op_eq(_name: &str, mut args: Vec<Ast>) -> Result<Ast, ReplError> {
     let b = args.pop().unwrap();
     let a = args.pop().unwrap();
 
@@ -104,7 +105,7 @@ fn op_eq(name: &str, mut args: Vec<Ast>) -> Result<Ast, ReplError> {
     }
 }
 
-fn op_lt(name: &str, mut args: Vec<Ast>) -> Result<Ast, ReplError> {
+fn op_lt(_name: &str, mut args: Vec<Ast>) -> Result<Ast, ReplError> {
     let b = args.pop().unwrap();
     let a = args.pop().unwrap();
 
@@ -124,27 +125,36 @@ fn op_lt(name: &str, mut args: Vec<Ast>) -> Result<Ast, ReplError> {
     }
 }
 
-fn list(name: &str, mut args: Vec<Ast>) -> Result<Ast, ReplError> {
+fn list(_name: &str, args: Vec<Ast>) -> Result<Ast, ReplError> {
     Ok(Ast::List(args))
 }
 
-fn list_q(name: &str, mut args: Vec<Ast>) -> Result<Ast, ReplError> {
+fn list_q(_name: &str, mut args: Vec<Ast>) -> Result<Ast, ReplError> {
     let a = args.pop().unwrap();
     Ok(Ast::Boolean(matches!(a, Ast::List(_))))
 }
 
-fn empty_q(name: &str, mut args: Vec<Ast>) -> Result<Ast, ReplError> {
+fn empty_q(_name: &str, mut args: Vec<Ast>) -> Result<Ast, ReplError> {
     let a = args.pop().unwrap();
     Ok(Ast::Boolean(matches!(a, Ast::List(xs) if xs.is_empty())))
 }
 
-fn count(name: &str, mut args: Vec<Ast>) -> Result<Ast, ReplError> {
+fn count(_name: &str, mut args: Vec<Ast>) -> Result<Ast, ReplError> {
     let a = args.pop().unwrap();
+
     Ok(Ast::Integer(if let Ast::List(xs) = a {
         xs.len() as i64
     } else {
         0
     }))
+}
+
+fn concat_str(name: &str, mut args: Vec<Ast>) -> Result<Ast, ReplError> {
+    let b = get_str(args.pop().unwrap(), 2, name)?;
+    let mut a = get_str(args.pop().unwrap(), 1, name)?;
+
+    a.push_str(&b);
+    Ok(Ast::String(a))
 }
 
 /* Public */
@@ -171,6 +181,7 @@ pub fn create_root_env() -> Environment {
         Ast::Builtin("empty?".to_owned(), empty_q),
     );
     root_env_table.insert("count".to_owned(), Ast::Builtin("count".to_owned(), count));
+    root_env_table.insert(".".to_owned(), Ast::Builtin(".".to_owned(), concat_str));
 
     Environment {
         values: root_env_table,

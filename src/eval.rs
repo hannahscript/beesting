@@ -49,6 +49,7 @@ fn eval_list(mut xs: Vec<Ast>, env: &Rc<RefCell<Environment>>) -> Result<EvalBeh
         match s.as_str() {
             "def!" => Ok(EvalBehaviour::ReturnImmediately(eval_form_def(xs, env)?)),
             "let*" => do_form_let(xs, env),
+            "letrec" => do_form_letrec(xs, env),
             "do" => do_form_do(xs, env),
             "if" => Ok(EvalBehaviour::LoopWithAst(do_form_if(xs, env)?)),
             "fun*" => Ok(EvalBehaviour::ReturnImmediately(eval_form_fun(xs, env)?)),
@@ -82,12 +83,21 @@ fn do_form_let(
     let expr = args.pop().unwrap();
     let bindings = args.pop().unwrap();
 
-    let n_env = bind_let(bindings, env)?;
-    Ok(EvalBehaviour::LoopWithAstAndEnv(
-        expr,
-        Rc::new(RefCell::new(n_env)),
-    ))
+    let n_env = bind_let(bindings, env, false)?;
+    Ok(EvalBehaviour::LoopWithAstAndEnv(expr, n_env))
 }
+
+fn do_form_letrec(
+    mut args: Vec<Ast>,
+    env: &Rc<RefCell<Environment>>,
+) -> Result<EvalBehaviour, ReplError> {
+    let expr = args.pop().unwrap();
+    let bindings = args.pop().unwrap();
+
+    let n_env = bind_let(bindings, env, true)?;
+    Ok(EvalBehaviour::LoopWithAstAndEnv(expr, n_env))
+}
+
 fn do_form_do(
     mut args: Vec<Ast>,
     env: &Rc<RefCell<Environment>>,
@@ -191,8 +201,15 @@ fn get_symbol_list(ast: Ast) -> Result<Vec<String>, ReplError> {
     }
 }
 
-fn bind_let(ast: Ast, env: &Rc<RefCell<Environment>>) -> Result<Environment, ReplError> {
-    let mut values = HashMap::new();
+fn bind_let(
+    ast: Ast,
+    env: &Rc<RefCell<Environment>>,
+    rec: bool,
+) -> Result<Rc<RefCell<Environment>>, ReplError> {
+    let n_env = Rc::new(RefCell::new(Environment {
+        values: HashMap::new(),
+        parent: Some(env.clone()),
+    }));
 
     let xs = match ast {
         Ast::List(xs) => xs,
@@ -206,16 +223,13 @@ fn bind_let(ast: Ast, env: &Rc<RefCell<Environment>>) -> Result<Environment, Rep
             symbol = get_symbol_name(x)?;
             get_sym = false;
         } else {
-            let v = eval(x, env)?;
-            values.insert(symbol.clone(), v);
+            let v = eval(x, if rec { &n_env } else { env })?;
+            n_env.borrow_mut().values.insert(symbol.clone(), v);
             get_sym = true;
         }
     }
 
-    Ok(Environment {
-        values,
-        parent: Some(env.clone()),
-    })
+    Ok(n_env)
 }
 
 fn get_symbol_name(ast: Ast) -> Result<String, ReplError> {

@@ -42,6 +42,23 @@ pub fn lookup(symbol: String, env: &Rc<RefCell<Environment>>) -> Result<Ast, Rep
     }
 }
 
+pub fn get_root(env: &Rc<RefCell<Environment>>) -> Rc<RefCell<Environment>> {
+    let mut current_env = Rc::clone(env);
+
+    loop {
+        current_env = {
+            let parent_maybe = &current_env.borrow().parent;
+            if parent_maybe.is_none() {
+                break;
+            }
+
+            Rc::clone(parent_maybe.as_ref().unwrap())
+        }
+    }
+
+    Rc::clone(&current_env)
+}
+
 /* Standard lib */
 
 fn add(name: &str, mut args: Vec<Ast>) -> Result<Ast, ReplError> {
@@ -149,12 +166,13 @@ fn count(_name: &str, mut args: Vec<Ast>) -> Result<Ast, ReplError> {
     }))
 }
 
-fn concat_str(name: &str, mut args: Vec<Ast>) -> Result<Ast, ReplError> {
-    let b = get_str(args.pop().unwrap(), 2, name)?;
-    let mut a = get_str(args.pop().unwrap(), 1, name)?;
+fn concat_str(name: &str, args: Vec<Ast>) -> Result<Ast, ReplError> {
+    let mut str = String::new();
+    for (i, arg) in args.into_iter().enumerate() {
+        str += &get_str(arg, (i as u32) + 1, name)?;
+    }
 
-    a.push_str(&b);
-    Ok(Ast::String(a))
+    Ok(Ast::String(str))
 }
 
 fn slurp(name: &str, mut args: Vec<Ast>) -> Result<Ast, ReplError> {
@@ -194,7 +212,7 @@ pub fn create_root_env() -> Environment {
         Ast::Builtin("empty?".to_owned(), empty_q),
     );
     root_env_table.insert("count".to_owned(), Ast::Builtin("count".to_owned(), count));
-    root_env_table.insert(".".to_owned(), Ast::Builtin(".".to_owned(), concat_str));
+    root_env_table.insert("str".to_owned(), Ast::Builtin("str".to_owned(), concat_str));
     root_env_table.insert("slurp".to_owned(), Ast::Builtin("slurp".to_owned(), slurp));
     root_env_table.insert(
         "read-str".to_owned(),

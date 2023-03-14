@@ -221,6 +221,7 @@ fn translate_symbol(symbol: &str) -> Ast {
     match symbol {
         "true" => Ast::Boolean(true),
         "false" => Ast::Boolean(false),
+        "nil" => Ast::Nil,
         other => Ast::Symbol(other.to_owned()),
     }
 }

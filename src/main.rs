@@ -26,6 +26,14 @@ fn rep(root_env: &Rc<RefCell<Environment>>) -> Result<Ast, ReplError> {
 fn main() {
     let root_env = Rc::new(RefCell::new(create_root_env()));
 
+    eval(
+        "(def! load-file (fun* (f) (eval (read-str (str '(do ' (slurp f) ' nil)')))))"
+            .parse()
+            .unwrap(),
+        &Rc::clone(&root_env),
+    )
+    .expect("Could not create function load-file");
+
     loop {
         print!("🐝> ");
         io::stdout().flush().expect("Can't flush. Call Luigi");
@@ -44,3 +52,5 @@ fn main() {
 // (def! fibt (fun* (n a b) (if (< n 1) a (fibt (- n 1) b (+ a b))) ))
 
 // (def! add (fun* (acc limit) (if (< acc limit) (add (+ acc 1) limit) acc)))
+
+// (def! load-file (fun* (f) (eval (read-str (str '(do ' (slurp f) ' nil)')))))

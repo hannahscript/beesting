@@ -1,6 +1,6 @@
 use crate::errors::ReplError;
 use crate::parser::{Ast, ParserError, UserFunction};
-use crate::root_env::{lookup, Environment};
+use crate::root_env::{get_root, lookup, Environment};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::iter::zip;
@@ -9,7 +9,7 @@ use std::rc::Rc;
 enum EvalBehaviour {
     ReturnImmediately(Ast),
     LoopWithAst(Ast),
-    LoopWithAstAndEnv(Ast, Environment),
+    LoopWithAstAndEnv(Ast, Rc<RefCell<Environment>>),
 }
 
 pub fn eval(i_ast: Ast, i_env: &Rc<RefCell<Environment>>) -> Result<Ast, ReplError> {
@@ -25,7 +25,7 @@ pub fn eval(i_ast: Ast, i_env: &Rc<RefCell<Environment>>) -> Result<Ast, ReplErr
                     EvalBehaviour::LoopWithAst(n_ast) => ast = n_ast,
                     EvalBehaviour::LoopWithAstAndEnv(n_ast, n_env) => {
                         ast = n_ast;
-                        env = Rc::new(RefCell::new(n_env));
+                        env = n_env;
                     }
                 }
             }
@@ -33,8 +33,8 @@ pub fn eval(i_ast: Ast, i_env: &Rc<RefCell<Environment>>) -> Result<Ast, ReplErr
             Ast::Integer(n) => return Ok(Ast::Integer(n)),
             Ast::Boolean(b) => return Ok(Ast::Boolean(b)),
             Ast::String(str) => return Ok(Ast::String(str)),
-            Ast::Function(_) => return Ok(Ast::Nil),
-            Ast::Builtin(_, _) => return Ok(Ast::Nil),
+            Ast::Function(f) => return Ok(Ast::Function(f)),
+            Ast::Builtin(n, f) => return Ok(Ast::Builtin(n, f)),
             Ast::Nil => return Ok(Ast::Nil),
         }
     }
@@ -49,16 +49,17 @@ fn eval_list(mut xs: Vec<Ast>, env: &Rc<RefCell<Environment>>) -> Result<EvalBeh
         match s.as_str() {
             "def!" => Ok(EvalBehaviour::ReturnImmediately(eval_form_def(xs, env)?)),
             "let*" => do_form_let(xs, env),
+            "do" => do_form_do(xs, env),
             "if" => Ok(EvalBehaviour::LoopWithAst(do_form_if(xs, env)?)),
             "fun*" => Ok(EvalBehaviour::ReturnImmediately(eval_form_fun(xs, env)?)),
             "eval" => {
                 let result = eval(xs.remove(1), env)?;
-                Ok(EvalBehaviour::LoopWithAst(result))
+                Ok(EvalBehaviour::LoopWithAstAndEnv(result, get_root(env)))
             }
             _ => eval_func_call(xs, env),
         }
     } else {
-        todo!("no special form and no function in list head")
+        eval_func_call(xs, env)
     }
 }
 
@@ -82,7 +83,26 @@ fn do_form_let(
     let bindings = args.pop().unwrap();
 
     let n_env = bind_let(bindings, env)?;
-    Ok(EvalBehaviour::LoopWithAstAndEnv(expr, n_env))
+    Ok(EvalBehaviour::LoopWithAstAndEnv(
+        expr,
+        Rc::new(RefCell::new(n_env)),
+    ))
+}
+fn do_form_do(
+    mut args: Vec<Ast>,
+    env: &Rc<RefCell<Environment>>,
+) -> Result<EvalBehaviour, ReplError> {
+    let last_maybe = args.pop();
+
+    for arg in args.into_iter().skip(1) {
+        eval(arg, env)?;
+    }
+
+    if let Some(last) = last_maybe {
+        Ok(EvalBehaviour::LoopWithAst(last))
+    } else {
+        Ok(EvalBehaviour::ReturnImmediately(Ast::Nil))
+    }
 }
 
 fn do_form_if(mut args: Vec<Ast>, env: &Rc<RefCell<Environment>>) -> Result<Ast, ReplError> {
@@ -124,7 +144,7 @@ fn eval_func_call(
             let user_fun = fun_box;
             Ok(EvalBehaviour::LoopWithAstAndEnv(
                 user_fun.body,
-                bind_fn(&user_fun.params, args, &user_fun.env),
+                Rc::new(RefCell::new(bind_fn(&user_fun.params, args, &user_fun.env))),
             ))
         }
         Ast::Builtin(name, cb) => Ok(EvalBehaviour::ReturnImmediately(cb(&name, args)?)),

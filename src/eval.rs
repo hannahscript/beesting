@@ -36,6 +36,7 @@ pub fn eval(i_ast: Ast, i_env: &Rc<RefCell<Environment>>) -> Result<Ast, ReplErr
             Ast::Function(f) => return Ok(Ast::Function(f)),
             Ast::Builtin(n, f) => return Ok(Ast::Builtin(n, f)),
             Ast::Nil => return Ok(Ast::Nil),
+            Ast::Atom(ast) => return Ok(Ast::Atom(ast)),
         }
     }
 }
@@ -167,7 +168,8 @@ fn eval_symbol(s: String, env: &Rc<RefCell<Environment>>) -> Result<Ast, ReplErr
     Ok(v)
 }
 
-fn bind_fn(params: &[String], args: Vec<Ast>, env: &Rc<RefCell<Environment>>) -> Environment {
+// todo move into enum impl?
+pub fn bind_fn(params: &[String], args: Vec<Ast>, env: &Rc<RefCell<Environment>>) -> Environment {
     let mut values = HashMap::new();
     // todo check params length against args length
     for (name, ast) in zip(params, args) {

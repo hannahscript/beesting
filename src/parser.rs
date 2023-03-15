@@ -110,6 +110,7 @@ pub enum Ast {
     Function(Box<UserFunction>),
     Builtin(String, EnvFunction),
     Nil,
+    Atom(Rc<RefCell<Ast>>),
 }
 
 #[derive(Clone)]
@@ -130,6 +131,7 @@ impl Debug for Ast {
             Ast::Symbol(s) => write!(f, "{}", s),
             Ast::Boolean(s) => write!(f, "{}", s),
             Ast::Nil => write!(f, "nil"),
+            Ast::Atom(ast) => write!(f, "<atom:{:?}>", ast.borrow()),
         }
     }
 }

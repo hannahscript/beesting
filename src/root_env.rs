@@ -1,5 +1,6 @@
 use crate::errors::ReplError;
-use crate::parser::{Ast, ParserError};
+use crate::eval::{bind_fn, eval};
+use crate::parser::{Ast, ParserError, UserFunction};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -26,6 +27,30 @@ fn get_str(ast: Ast, pos: u32, fn_name: &str) -> Result<String, ParserError> {
             fn_name.to_owned(),
             pos,
             "String".to_owned(),
+            ast,
+        )),
+    }
+}
+
+fn get_atom(ast: Ast, pos: u32, fn_name: &str) -> Result<Rc<RefCell<Ast>>, ParserError> {
+    match ast {
+        Ast::Atom(ast) => Ok(ast),
+        _ => Err(ParserError::TypeMismatch(
+            fn_name.to_owned(),
+            pos,
+            "Atom".to_owned(),
+            ast,
+        )),
+    }
+}
+
+fn get_fun(ast: Ast, pos: u32, fn_name: &str) -> Result<Box<UserFunction>, ParserError> {
+    match ast {
+        Ast::Function(ast) => Ok(ast),
+        _ => Err(ParserError::TypeMismatch(
+            fn_name.to_owned(),
+            pos,
+            "Function".to_owned(),
             ast,
         )),
     }
@@ -188,6 +213,52 @@ fn read_str(name: &str, mut args: Vec<Ast>) -> Result<Ast, ReplError> {
     Ok(a.parse()?)
 }
 
+/* Atom */
+fn atom(_name: &str, mut args: Vec<Ast>) -> Result<Ast, ReplError> {
+    let a = args.pop().unwrap();
+
+    Ok(Ast::Atom(Rc::new(RefCell::new(a))))
+}
+
+fn atom_q(_name: &str, mut args: Vec<Ast>) -> Result<Ast, ReplError> {
+    let a = args.pop().unwrap();
+
+    Ok(Ast::Boolean(matches!(a, Ast::Atom(_))))
+}
+
+fn deref(_name: &str, mut args: Vec<Ast>) -> Result<Ast, ReplError> {
+    let a = args.pop().unwrap();
+
+    if let Ast::Atom(ast) = a {
+        Ok(ast.borrow().to_owned())
+    } else {
+        todo!("Error: not an atom")
+    }
+}
+
+fn reset_m(_name: &str, mut args: Vec<Ast>) -> Result<Ast, ReplError> {
+    let val = args.pop().unwrap();
+    let atom = args.pop().unwrap();
+
+    if let Ast::Atom(ast) = atom {
+        *ast.borrow_mut() = val.clone();
+        Ok(val)
+    } else {
+        todo!("Error: not an atom")
+    }
+}
+
+fn swap_m(name: &str, mut args: Vec<Ast>) -> Result<Ast, ReplError> {
+    let fun = get_fun(args.pop().unwrap(), 2, name)?;
+    let atom = get_atom(args.pop().unwrap(), 1, name)?;
+
+    let atom_content = atom.borrow_mut().clone();
+    let env = bind_fn(&fun.params, vec![atom_content], &fun.env);
+    let new_val = eval(fun.body, &Rc::new(RefCell::new(env)))?;
+    *atom.borrow_mut() = new_val;
+    Ok(Ast::Atom(atom))
+}
+
 /* Public */
 
 #[derive(Clone)]
@@ -218,6 +289,15 @@ pub fn create_root_env() -> Environment {
         "read-str".to_owned(),
         Ast::Builtin("read-str".to_owned(), read_str),
     );
+
+    root_env_table.insert("atom".to_owned(), Ast::Builtin("atom".to_owned(), atom));
+    root_env_table.insert("atom?".to_owned(), Ast::Builtin("atom?".to_owned(), atom_q));
+    root_env_table.insert("deref".to_owned(), Ast::Builtin("deref".to_owned(), deref));
+    root_env_table.insert(
+        "reset!".to_owned(),
+        Ast::Builtin("reset!".to_owned(), reset_m),
+    );
+    root_env_table.insert("swap!".to_owned(), Ast::Builtin("swap!".to_owned(), swap_m));
 
     Environment {
         values: root_env_table,
